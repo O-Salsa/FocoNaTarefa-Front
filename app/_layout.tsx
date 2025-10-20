@@ -1,24 +1,67 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+// app/_layout.tsx
+import { Redirect, Slot, useFocusEffect, usePathname } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
+  const pathname = usePathname();
+
+  async function readToken() {
+    try {
+      const stored = await SecureStore.getItemAsync('accessToken');
+      setToken(stored);
+    } catch (e) {
+      console.log('[RootLayout] erro lendo token', e);
+    }
+  }
+
+  // 1) Leitura inicial
+  useEffect(() => {
+    let cancelled = false;
+    const safety = setTimeout(() => !cancelled && setLoading(false), 3000);
+
+    (async () => {
+      await readToken();
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => { cancelled = true; clearTimeout(safety); };
+  }, []);
+
+  // 2) Re-leia quando a tela ganhar foco (após login/logout)
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => { await readToken(); })();
+      return () => { active = false; };
+    }, [])
+  );
+
+  if (loading) {
+    return (
+      <View style={{flex:1,alignItems:'center',justifyContent:'center'}}>
+        <ActivityIndicator size="large" color="#6C63FF" />
+      </View>
+    );
+  }
+
+  // 3) Evitar redirect para a MESMA rota (loop)
+  if (!token && pathname !== '/login') {
+    return <Redirect href="/login" />;
+  }
+
+  if (token && pathname === '/login') {
+    // já logado e caiu no login? manda pra home
+    return <Redirect href="/" />;
+  }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <Slot />
+    </GestureHandlerRootView>
   );
 }
