@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router"; // ⬅️ aqui
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, Button, StyleSheet, Text, TextInput, View } from "react-native";
 import api from "../src/api/api";
@@ -6,7 +6,7 @@ import api from "../src/api/api";
 export default function NovaTarefa() {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const router = useRouter();             // ⬅️ aqui
+  const router = useRouter();             
 
   async function salvar() {
     if (!titulo.trim()) {
@@ -20,6 +20,12 @@ export default function NovaTarefa() {
     } catch (e: any) {
       Alert.alert("Erro", e?.response?.data?.message ?? e?.message ?? "Erro ao salvar tarefa");
     }
+
+  }
+
+  function voltar(): void {
+    router.back();
+    return
   }
 
   return (
@@ -41,6 +47,7 @@ export default function NovaTarefa() {
         multiline
       />
       <Button title="Salvar" onPress={salvar} />
+      <Button title="Voltar" onPress={voltar}/>
     </View>
   );
 }
