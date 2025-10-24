@@ -15,6 +15,7 @@ export const theme = {
     graySoft:  "#EFEFF2",
     placeholder: "#A1A1A6",
     chip: "#EAEAEA",
+    redStrong: '#B3261E',
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
   radius: { sm: 8, md: 16, lg: 30 },

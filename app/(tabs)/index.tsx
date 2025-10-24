@@ -2,20 +2,24 @@
 import { Snackbar } from '@/src/api/components/Snackbar';
 import {
   completeTask,
+  createTask,
   listActive,
   softDeleteTask,
   type Task,
 } from '@/src/api/services/task.service';
 import { theme } from '@/src/api/styles/theme';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -32,6 +36,11 @@ export default function HomeScreen() {
     text: '',
     withUndo: false,
   });
+
+  const [showComposer, setShowComposer] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [creating, setCreating] = useState(false);
 
   // seleção múltipla
   const [selectionMode, setSelectionMode] = useState(false);
@@ -52,6 +61,14 @@ export default function HomeScreen() {
   }, []);
 
   useEffect(() => { load(true); }, [load]);
+
+  useEffect(() => {
+    if (selectionMode) {
+      setShowComposer(false);
+      setNewTitle('');
+      setNewDescription('');
+    }
+  }, [selectionMode]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -179,7 +196,12 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={S.container}>
+    <KeyboardAvoidingView
+      style={S.avoiding}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <View style={S.container}>
       {loading ? (
         <>
           {ListHeader}
@@ -191,7 +213,7 @@ export default function HomeScreen() {
           keyExtractor={(i) => String(i.id)}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          contentContainerStyle={{ paddingBottom: selectionMode ? 160 : 100 }}
+          contentContainerStyle={{ paddingBottom: selectionMode ? 160 : showComposer ? 240 : 100 }}
           ListHeaderComponent={ListHeader}
           ListEmptyComponent={
             <View style={S.emptyBox}>
@@ -206,11 +228,76 @@ export default function HomeScreen() {
 
       {/* FAB some quando estiver selecionando */}
       {!selectionMode && (
-        <Link href="/nova-tarefa" asChild>
-          <Pressable style={S.fab}>
+        showComposer ? (
+          <View style={S.composer}>
+            <TextInput
+              style={S.composerInput}
+              placeholder="Título da tarefa"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newTitle}
+              onChangeText={setNewTitle}
+              editable={!creating}
+            />
+            <TextInput
+              style={[S.composerInput, S.composerDescription]}
+              placeholder="Descrição (opcional)"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newDescription}
+              onChangeText={setNewDescription}
+              editable={!creating}
+              multiline
+            />
+            <View style={S.composerActions}>
+              <Pressable
+                style={[S.composerBtn, S.composerCancel, creating && S.composerBtnDisabled]}
+                onPress={() => {
+                  if (creating) return;
+                  setShowComposer(false);
+                  setNewTitle('');
+                  setNewDescription('');
+                }}
+              >
+                <Text style={S.composerCancelText}>✕</Text>
+              </Pressable>
+              <Pressable
+                style={[S.composerBtn, S.composerConfirm, creating && S.composerBtnDisabled]}
+                onPress={async () => {
+                  if (creating) return;
+                  if (!newTitle.trim()) {
+                    Alert.alert('Aviso', 'Digite um título para a tarefa.');
+                    return;
+                  }
+                  try {
+                    setCreating(true);
+                    await createTask({
+                      title: newTitle.trim(),
+                      description: newDescription.trim() ? newDescription.trim() : undefined,
+                    });
+                    await load(false);
+                    setSnack({ visible: true, text: 'Tarefa criada' });
+                    setShowComposer(false);
+                    setNewTitle('');
+                    setNewDescription('');
+                  } catch {
+                    Alert.alert('Erro', 'Falha ao criar tarefa.');
+                  } finally {
+                    setCreating(false);
+                  }
+                }}
+              >
+                {creating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={S.composerConfirmText}>✓</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable style={S.fab} onPress={() => setShowComposer(true)}>
             <Text style={S.fabPlus}>＋</Text>
           </Pressable>
-        </Link>
+        )
       )}
 
       {/* Barra de ações em massa (⭐ sem contador, só botões) */}
@@ -231,24 +318,26 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <Snackbar
-        visible={snack.visible}
-        text={snack.text}
-        actionLabel={snack.withUndo ? 'Desfazer' : undefined}
-        onActionPress={snack.withUndo ? () => {
-          const a = lastAction.current;
-          if (!a) return;
-          setTasks(prev => [a.task, ...prev]);
-          lastAction.current = null;
-          setSnack({ visible: false, text: '' });
-        } : undefined}
-        onDismiss={() => setSnack({ visible: false, text: '', withUndo: false })}
-      />
-    </View>
+        <Snackbar
+          visible={snack.visible}
+          text={snack.text}
+          actionLabel={snack.withUndo ? 'Desfazer' : undefined}
+          onActionPress={snack.withUndo ? () => {
+            const a = lastAction.current;
+            if (!a) return;
+            setTasks(prev => [a.task, ...prev]);
+            lastAction.current = null;
+            setSnack({ visible: false, text: '' });
+          } : undefined}
+          onDismiss={() => setSnack({ visible: false, text: '', withUndo: false })}
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const S = StyleSheet.create({
+  avoiding: { flex: 1 },
   container: { flex: 1, backgroundColor: theme.colors.background, paddingTop: 52, paddingHorizontal: 20 },
 
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
@@ -317,6 +406,71 @@ const S = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 6, elevation: 6,
   },
   fabPlus: { fontSize: 30, color: '#fff', lineHeight: 30, fontWeight: '800' },
+
+  composer: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 24,
+    borderRadius: 20,
+    padding: 16,
+    backgroundColor: theme.colors.surface ?? '#FFFFFF',
+    borderWidth: 1,
+    borderColor: theme.colors.border ?? '#E2E2E6',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  composerInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border ?? '#E2E2E6',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: theme.colors.textPrimary,
+    backgroundColor: theme.colors.background,
+    marginBottom: 10,
+  },
+  composerDescription: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  composerActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  composerBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  composerBtnDisabled: {
+    opacity: 0.6,
+  },
+  composerConfirm: {
+    backgroundColor: theme.colors.accent,
+  },
+  composerConfirmText: {
+    fontSize: 22,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  composerCancel: {
+    backgroundColor: theme.colors.redSoft ?? '#FDE7E7',
+  },
+  composerCancelText: {
+    fontSize: 22,
+    color: theme.colors.redStrong ?? '#B3261E',
+    fontWeight: '700',
+  },
 
   // Bulk action bar (sem contador)
   bulkBar: {
