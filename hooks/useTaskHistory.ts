@@ -1,74 +1,122 @@
 // hooks/useTaskHistory.ts
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   hardDeleteTask,
   listCompleted,
+  listTrash,
   reopenTask,
-  type Task
+  type Task,
 } from '../src/api/services/task.service';
 
-export function useCompletedTasks(query: string, periodDays?: number) {
-  const [data, setData] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
+const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
 
-useEffect(() => {
-  let mounted = true;
-  (async () => {
-    setLoading(true);
-    try {
-      const items = await listCompleted(query, periodDays);
-      if (mounted) setData(items);
-    } catch (e) {
-      if (mounted) setData([]); // fallback
-      console.log('[useCompletedTasks] erro:', e);
-    } finally {
-      if (mounted) setLoading(false);
-    }
-  })();
-  return () => { mounted = false; };
-}, [query, periodDays]);
-
-
-  const reopen = async (id: string) => {
-    // UI otimista
-    setData(prev => prev.filter(t => t.id !== id));
-    try { await reopenTask(id); } catch { /* opcional: rollback */ }
-  };
-
-  return { data, loading, reopen };
+function isExpired(deletedAt?: string, now: number = Date.now()) {
+  if (!deletedAt) return false;
+  return now >= new Date(deletedAt).getTime() + THIRTY_DAYS_IN_MS;
 }
 
-export function useTrashTasks(query: string, periodDays?: number) {
+export function useCompletedTasks() {
   const [data, setData] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
 
-useEffect(() => {
-  let mounted = true;
-  (async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await listCompleted(query, periodDays);
-      if (mounted) setData(items);
+      const items = await listCompleted();
+      setData(items);
     } catch (e) {
-      if (mounted) setData([]); // fallback
+      setData([]);
       console.log('[useCompletedTasks] erro:', e);
     } finally {
-      if (mounted) setLoading(false);
+      setLoading(false);
     }
-  })();
-  return () => { mounted = false; };
-}, [query, periodDays]);
+  }, []);
 
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
 
-  const restore = async (id: string) => {
-    setData(prev => prev.filter(t => t.id !== id));
-    try { await reopenTask(id); } catch {}
-  };
+  const reopen = useCallback(async (id: string) => {
+    setData((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await reopenTask(id);
+    } catch (e) {
+      console.log('[useCompletedTasks] reopen erro:', e);
+      void fetchData();
+    }
+  }, [fetchData]);
 
-  const hardDelete = async (id: string) => {
-    setData(prev => prev.filter(t => t.id !== id));
-    try { await hardDeleteTask(id); } catch {}
-  };
+  return { data, loading, reopen, refresh: fetchData };
+}
 
-  return { data, loading, restore, hardDelete };
+export function useTrashTasks() {
+  const [data, setData] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await listTrash();
+      setData(items.filter((task) => !isExpired(task.deletedAt)));
+    } catch (e) {
+      setData([]);
+      console.log('[useTrashTasks] erro:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!data.length) return;
+    const expired = data.filter((task) => isExpired(task.deletedAt, now));
+    if (!expired.length) return;
+
+    setData((prev) => prev.filter((task) => !expired.some((e) => e.id === task.id)));
+    expired.forEach((task) => {
+      void hardDeleteTask(task.id).catch((e) => console.log('[useTrashTasks] auto hardDelete erro:', e));
+    });
+  }, [data, now]);
+
+  const restore = useCallback(async (id: string) => {
+    setData((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await reopenTask(id);
+    } catch (e) {
+      console.log('[useTrashTasks] restore erro:', e);
+      void fetchData();
+    }
+  }, [fetchData]);
+
+  const hardDelete = useCallback(async (id: string) => {
+    setData((prev) => prev.filter((t) => t.id !== id));
+    try {
+      await hardDeleteTask(id);
+    } catch (e) {
+      console.log('[useTrashTasks] hardDelete erro:', e);
+      void fetchData();
+    }
+  }, [fetchData]);
+
+  const countdowns = useMemo(() => {
+    return data.reduce<Record<string, number>>((acc, task) => {
+      if (!task.deletedAt) return acc;
+      const expiresAt = new Date(task.deletedAt).getTime() + THIRTY_DAYS_IN_MS;
+      acc[task.id] = Math.max(0, expiresAt - now);
+      return acc;
+    }, {});
+  }, [data, now]);
+
+  return { data, loading, restore, hardDelete, refresh: fetchData, now, countdowns };
 }

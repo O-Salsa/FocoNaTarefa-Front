@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
+
 export default function HomeScreen() {
   const router = useRouter();
 
@@ -140,10 +141,24 @@ export default function HomeScreen() {
 
   const RightActions = ({ item }: { item: Task }) => (
     <View style={S.swipeRight}>
-      <Pressable style={[S.swipeBtn, S.complete]} onPress={() => onComplete(item)}>
+      <Pressable
+        style={({ pressed }) => [
+          S.swipeBtn,
+          S.complete,
+          pressed && S.pressablePressed,
+        ]}
+        onPress={() => onComplete(item)}
+      >
         <Text style={S.swipeText}>Concluir</Text>
       </Pressable>
-      <Pressable style={[S.swipeBtn, S.trash]} onPress={() => onSoftDelete(item)}>
+      <Pressable
+        style={({ pressed }) => [
+          S.swipeBtn,
+          S.trash,
+          pressed && S.pressablePressed,
+        ]}
+        onPress={() => onSoftDelete(item)}
+      >
         <Text style={S.swipeText}>Lixeira</Text>
       </Pressable>
     </View>
@@ -249,7 +264,12 @@ export default function HomeScreen() {
             />
             <View style={S.composerActions}>
               <Pressable
-                style={[S.composerBtn, S.composerCancel, creating && S.composerBtnDisabled]}
+                style={({ pressed }) => [
+                  S.composerBtn,
+                  S.composerCancel,
+                  creating && S.composerBtnDisabled,
+                  !creating && pressed && S.pressablePressed,
+                ]}
                 onPress={() => {
                   if (creating) return;
                   setShowComposer(false);
@@ -260,7 +280,12 @@ export default function HomeScreen() {
                 <Text style={S.composerCancelText}>✕</Text>
               </Pressable>
               <Pressable
-                style={[S.composerBtn, S.composerConfirm, creating && S.composerBtnDisabled]}
+                style={({ pressed }) => [
+                  S.composerBtn,
+                  S.composerCancel,
+                  creating && S.composerBtnDisabled,
+                  !creating && pressed && S.pressablePressed,
+                ]}
                 onPress={async () => {
                   if (creating) return;
                   if (!newTitle.trim()) {
@@ -294,7 +319,10 @@ export default function HomeScreen() {
             </View>
           </View>
         ) : (
-          <Pressable style={S.fab} onPress={() => setShowComposer(true)}>
+          <Pressable
+            style={({ pressed }) => [S.fab, pressed && S.pressablePressed]}
+            onPress={() => setShowComposer(true)}
+          >
             <Text style={S.fabPlus}>＋</Text>
           </Pressable>
         )
@@ -305,14 +333,35 @@ export default function HomeScreen() {
         <View style={S.bulkBar}>
           <View style={{ flex: 1 }} />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable style={[S.bulkBtn, S.bulkPrimary]} onPress={bulkComplete}>
-              <Text style={S.bulkBtnTxt}>Concluir todas</Text>
+            <Pressable
+              style={({ pressed }) => [
+                S.bulkBtn,
+                S.bulkPrimary,
+                pressed && S.pressablePressed,
+              ]}
+              onPress={bulkComplete}
+            >
+              <Text style={[S.bulkBtnTxt, S.bulkPrimaryTxt]}>Concluir</Text>
             </Pressable>
-            <Pressable style={[S.bulkBtn, S.bulkDanger]} onPress={bulkSoftDelete}>
-              <Text style={S.bulkBtnTxt}>Lixeira</Text>
+            <Pressable
+              style={({ pressed }) => [
+                S.bulkBtn,
+                S.bulkDanger,
+                pressed && S.pressablePressed,
+              ]}
+              onPress={bulkSoftDelete}
+            >
+              <Text style={[S.bulkBtnTxt, S.bulkDangerTxt]}>Lixeira</Text>
             </Pressable>
-            <Pressable style={[S.bulkBtn, S.bulkNeutral]} onPress={clearSelection}>
-              <Text style={S.bulkBtnTxt}>Cancelar</Text>
+            <Pressable
+              style={({ pressed }) => [
+                S.bulkBtn,
+                S.bulkNeutral,
+                pressed && S.pressablePressed,
+              ]}
+              onPress={clearSelection}
+            >
+              <Text style={[S.bulkBtnTxt, S.bulkNeutralTxt]}>Cancelar</Text>
             </Pressable>
           </View>
         </View>
@@ -351,6 +400,10 @@ const S = StyleSheet.create({
   },
   avatarTxt: { color: theme.colors.accentDark, fontWeight: '800' },
 
+    pressablePressed: {
+    transform: [{ scale: 0.96 }],
+    opacity: 0.9,
+  },
   emptyBox: { alignItems: 'center', marginTop: 32 },
   emptyEmoji: { fontSize: 36 },
   emptyTitle: { marginTop: 6, fontWeight: '700', color: theme.colors.textPrimary },
@@ -460,7 +513,7 @@ const S = StyleSheet.create({
   },
   composerConfirmText: {
     fontSize: 22,
-    color: '#fff',
+    color: '#18850aff',
     fontWeight: '700',
   },
   composerCancel: {
@@ -483,10 +536,22 @@ const S = StyleSheet.create({
   },
   bulkBtn: {
     paddingHorizontal: 12, paddingVertical: 10,
-    borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border,
+    borderRadius: 12, borderWidth: 1,
   },
-  bulkBtnTxt: { fontWeight: '700', color: theme.colors.textPrimary },
-  bulkPrimary: { backgroundColor: theme.colors.greenSoft },
-  bulkDanger: { backgroundColor: theme.colors.redSoft },
-  bulkNeutral: { backgroundColor: theme.colors.graySoft },
+  bulkBtnTxt: { fontWeight: '700' },
+  bulkPrimary: {
+    backgroundColor: theme.colors.greenSoft,
+    borderColor: '#9ED69E',
+  },
+  bulkPrimaryTxt: { color: '#176B29' },
+  bulkDanger: {
+    backgroundColor: theme.colors.redSoft,
+    borderColor: '#F5B5B5',
+  },
+  bulkDangerTxt: { color: theme.colors.redStrong ?? '#B3261E' },
+  bulkNeutral: {
+    backgroundColor: theme.colors.graySoft,
+    borderColor: '#D3D3D8',
+  },
+  bulkNeutralTxt: { color: theme.colors.textSecondary },
 });

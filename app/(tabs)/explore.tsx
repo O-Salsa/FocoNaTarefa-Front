@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useCompletedTasks, useTrashTasks } from '../../hooks/useTaskHistory';
@@ -15,12 +14,10 @@ type Tab = 'completed' | 'trash';
 
 export default function ExploreScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('completed');
-  const [query, setQuery] = useState('');
-  const [period, setPeriod] = useState<number | undefined>(30);
   const [snack, setSnack] = useState<{ visible: boolean; text: string }>({ visible: false, text: '' });
 
-  const completed = useCompletedTasks(query, period);
-  const trash = useTrashTasks(query, period);
+  const completed = useCompletedTasks();
+  const trash = useTrashTasks();
 
   const data = useMemo(() => (activeTab === 'completed' ? completed.data : trash.data), [activeTab, completed.data, trash.data]);
   const loading = activeTab === 'completed' ? completed.loading : trash.loading;
@@ -52,39 +49,24 @@ export default function ExploreScreen() {
       <View style={S.tabs}>
         <Pressable
           onPress={() => setActiveTab('completed')}
-          style={[S.tabBtn, activeTab === 'completed' && S.tabBtnActive]}>
+          style={({ pressed }) => [
+            S.tabBtn,
+            activeTab === 'completed' && S.tabBtnActive,
+            pressed && S.pressablePressed,
+          ]}
+        >
           <Text style={S.tabTxt}>Concluídas</Text>
         </Pressable>
         <Pressable
           onPress={() => setActiveTab('trash')}
-          style={[S.tabBtn, activeTab === 'trash' && S.tabBtnActive]}>
+          style={({ pressed }) => [
+            S.tabBtn,
+            activeTab === 'trash' && S.tabBtnActive,
+            pressed && S.pressablePressed,
+          ]}
+        >
           <Text style={S.tabTxt}>Lixeira</Text>
         </Pressable>
-      </View>
-
-      {/* Busca */}
-      <TextInput
-        placeholder="Buscar..."
-        placeholderTextColor="#A1A1A6"
-        value={query}
-        onChangeText={setQuery}
-        style={S.search}
-      />
-
-      {/* Chips período */}
-      <View style={S.chips}>
-        {[
-          { l: '7d', v: 7 },
-          { l: '30d', v: 30 },
-          { l: 'Todos', v: undefined as number | undefined },
-        ].map((c) => (
-          <Pressable
-            key={c.l}
-            onPress={() => setPeriod(c.v)}
-            style={[S.chip, period === c.v && S.chipActive]}>
-            <Text style={S.chipTxt}>{c.l}</Text>
-          </Pressable>
-        ))}
       </View>
 
       {/* Lista */}
@@ -98,7 +80,7 @@ export default function ExploreScreen() {
           ListEmptyComponent={
             <Text style={S.empty}>
               {activeTab === 'completed'
-                ? 'Nenhuma tarefa concluída no período.'
+                ? 'Nenhuma tarefa concluída.'
                 : 'Sua lixeira está vazia.'}
             </Text>
           }
@@ -108,20 +90,41 @@ export default function ExploreScreen() {
               <Text style={S.cardSub}>
                 {activeTab === 'completed'
                   ? tempoRelativo(item.completedAt)
-                  : `Na lixeira ${tempoRelativo(item.deletedAt)}`}
+                  : contagemRegressiva(trash.countdowns[item.id])}
               </Text>
 
               <View style={S.actions}>
                 {activeTab === 'completed' ? (
-                  <Pressable onPress={() => handleReopen(item.id)} style={[S.btn, S.btnPrimary]}>
+                  <Pressable
+                    onPress={() => handleReopen(item.id)}
+                    style={({ pressed }) => [
+                      S.btn,
+                      S.btnPrimary,
+                      pressed && S.pressablePressed,
+                    ]}
+                  >
                     <Text style={S.btnTxt}>Reabrir</Text>
                   </Pressable>
                 ) : (
                   <>
-                    <Pressable onPress={() => handleRestore(item.id)} style={[S.btn, S.btnNeutral]}>
+                    <Pressable
+                      onPress={() => handleRestore(item.id)}
+                      style={({ pressed }) => [
+                        S.btn,
+                        S.btnNeutral,
+                        pressed && S.pressablePressed,
+                      ]}
+                    >
                       <Text style={S.btnTxt}>Restaurar</Text>
                     </Pressable>
-                    <Pressable onPress={() => handleHardDelete(item.id)} style={[S.btn, S.btnDanger]}>
+                    <Pressable
+                      onPress={() => handleHardDelete(item.id)}
+                      style={({ pressed }) => [
+                        S.btn,
+                        S.btnDanger,
+                        pressed && S.pressablePressed,
+                      ]}
+                    >
                       <Text style={S.btnTxt}>Excluir</Text>
                     </Pressable>
                   </>
@@ -168,6 +171,26 @@ function tempoRelativo(iso?: string) {
   return 'agora';
 }
 
+function contagemRegressiva(restante?: number) {
+  if (restante === undefined) return 'Restam 30 dias';
+  const diff = Math.max(0, restante);
+  const dias = Math.floor(diff / 86400000);
+  const horas = Math.floor((diff % 86400000) / 3600000);
+  const minutos = Math.floor((diff % 3600000) / 60000);
+  const segundos = Math.floor((diff % 60000) / 1000);
+
+  if (diff <= 0) return 'Removendo...';
+
+  const partes = [
+    dias > 0 ? `${dias}d` : null,
+    horas > 0 || dias > 0 ? `${horas}h` : null,
+    minutos > 0 || horas > 0 || dias > 0 ? `${minutos}m` : null,
+    `${segundos}s`,
+  ].filter(Boolean);
+
+  return `Exclui em ${partes.join(' ')}`;
+}
+
 const S = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F7F8', paddingTop: 60, paddingHorizontal: 20 },
   title: { fontSize: 26, fontWeight: '600', marginBottom: 16 },
@@ -175,6 +198,10 @@ const S = StyleSheet.create({
   tabBtn: { flex: 1, backgroundColor: '#EAEAEA', padding: 10, borderRadius: 16, marginRight: 6, alignItems: 'center' },
   tabBtnActive: { backgroundColor: '#DCCEF3' }, // lilás pastel
   tabTxt: { fontWeight: '500' },
+  pressablePressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.85,
+  },
   search: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#EEE' },
   chips: { flexDirection: 'row', marginBottom: 16 },
   chip: { backgroundColor: '#EAEAEA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, marginRight: 8 },
