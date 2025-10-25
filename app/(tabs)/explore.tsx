@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useCompletedTasks, useTrashTasks } from '../../hooks/useTaskHistory';
 import { Snackbar } from '../../src/api/components/Snackbar'; // você tem esse componente
 
@@ -16,24 +17,51 @@ export default function ExploreScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('completed');
   const [snack, setSnack] = useState<{ visible: boolean; text: string }>({ visible: false, text: '' });
 
-  const completed = useCompletedTasks();
-  const trash = useTrashTasks();
+  const {
+    data: completedData,
+    loading: completedLoading,
+    reopen,
+    refresh: refreshCompleted,
+  } = useCompletedTasks();
+  const {
+    data: trashData,
+    loading: trashLoading,
+    restore,
+    hardDelete,
+    refresh: refreshTrash,
+    countdowns: trashCountdowns,
+  } = useTrashTasks();
 
-  const data = useMemo(() => (activeTab === 'completed' ? completed.data : trash.data), [activeTab, completed.data, trash.data]);
-  const loading = activeTab === 'completed' ? completed.loading : trash.loading;
+  const data = useMemo(() => (activeTab === 'completed' ? completedData : trashData), [activeTab, completedData, trashData]);
+  const loading = activeTab === 'completed' ? completedLoading : trashLoading;
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshCompleted();
+      void refreshTrash();
+    }, [refreshCompleted, refreshTrash])
+  );
+
+  useEffect(() => {
+    if (activeTab === 'completed') {
+      void refreshCompleted();
+    } else {
+      void refreshTrash();
+    }
+  }, [activeTab, refreshCompleted, refreshTrash]);
 
   const handleReopen = async (id: string) => {
-    await completed.reopen(id);
+    await reopen(id);
     setSnack({ visible: true, text: 'Tarefa reaberta' });
   };
 
   const handleRestore = async (id: string) => {
-    await trash.restore(id);
+    await restore(id);
     setSnack({ visible: true, text: 'Tarefa restaurada' });
   };
 
   const handleHardDelete = async (id: string) => {
-    await trash.hardDelete(id);
+    await hardDelete(id);
     setSnack({ visible: true, text: 'Excluída definitivamente' });
   };
 
@@ -90,7 +118,7 @@ export default function ExploreScreen() {
               <Text style={S.cardSub}>
                 {activeTab === 'completed'
                   ? tempoRelativo(item.completedAt)
-                  : contagemRegressiva(trash.countdowns[item.id])}
+                  : contagemRegressiva(trashCountdowns[item.id])}
               </Text>
 
               <View style={S.actions}>

@@ -5,6 +5,7 @@ import {
   listCompleted,
   listTrash,
   reopenTask,
+  restoreTask,
   type Task,
 } from '../src/api/services/task.service';
 
@@ -92,7 +93,7 @@ export function useTrashTasks() {
   const restore = useCallback(async (id: string) => {
     setData((prev) => prev.filter((t) => t.id !== id));
     try {
-      await reopenTask(id);
+      await restoreTask(id);
     } catch (e) {
       console.log('[useTrashTasks] restore erro:', e);
       void fetchData();

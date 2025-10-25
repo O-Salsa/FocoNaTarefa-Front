@@ -80,6 +80,11 @@ export async function listTrash(q?: string, periodDays?: number): Promise<Task[]
   return normalizeList(data);
 }
 
+export async function restoreTask(id: string): Promise<Task> {
+  const { data } = await api.patch(`/api/tasks/${id}/restore`, {});
+  return data as Task;
+}
+
 export async function reopenTask(id: string): Promise<Task> {
   const { data } = await api.patch(`/api/tasks/${id}/reopen`, {});
   return data as Task;
