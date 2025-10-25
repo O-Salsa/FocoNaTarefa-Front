@@ -84,6 +84,19 @@ export async function reopenTask(id: string): Promise<Task> {
   const { data } = await api.patch(`/api/tasks/${id}/reopen`, {});
   return data as Task;
 }
+export async function restoreTask(id: string): Promise<Task> {
+  try {
+    const { data } = await api.post(`/api/tasks/${id}/restore`, {});
+    return data as Task;
+  } catch (error: any) {
+    const status = error?.response?.status;
+    if (status === 404 || status === 405 || status === 501) {
+      const fallback = await api.patch(`/api/tasks/${id}/restore`, {});
+      return fallback.data as Task;
+    }
+    throw error;
+  }
+}
 
 export async function hardDeleteTask(id: string): Promise<void> {
   await api.delete(`/api/tasks/${id}`);

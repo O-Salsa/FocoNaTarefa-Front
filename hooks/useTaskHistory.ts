@@ -1,122 +1,131 @@
-// hooks/useTaskHistory.ts
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   hardDeleteTask,
   listCompleted,
   listTrash,
   reopenTask,
-  type Task,
+  restoreTask,
+  type Task
 } from '../src/api/services/task.service';
 
-const THIRTY_DAYS_IN_MS = 30 * 24 * 60 * 60 * 1000;
-
-function isExpired(deletedAt?: string, now: number = Date.now()) {
-  if (!deletedAt) return false;
-  return now >= new Date(deletedAt).getTime() + THIRTY_DAYS_IN_MS;
-}
-
-export function useCompletedTasks() {
+/**
+ * HOOK: Tarefas concluídas
+ * - lista /api/tasks?status=COMPLETED
+ * - permite reabrir (PATCH /{id}/reopen)
+ */
+export function useCompletedTasks(query?: string, periodDays?: number) {
   const [data, setData] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  /** 🔄 Buscar tarefas concluídas */
+  const fetcher = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await listCompleted();
-      setData(items);
+      const items = await listCompleted(query, periodDays);
+      // Filtra só as concluídas válidas
+      setData(items.filter((t) => t.status === 'COMPLETED' && !t.deletedAt));
     } catch (e) {
-      setData([]);
       console.log('[useCompletedTasks] erro:', e);
+      setData([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query, periodDays]);
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    void fetcher();
+  }, [fetcher]);
 
+  /** ♻️ Reabrir tarefa concluída → volta a ser ACTIVE */
   const reopen = useCallback(async (id: string) => {
-    setData((prev) => prev.filter((t) => t.id !== id));
+    setData((prev) => prev.filter((t) => t.id !== id)); // UI otimista
     try {
       await reopenTask(id);
     } catch (e) {
       console.log('[useCompletedTasks] reopen erro:', e);
-      void fetchData();
+      // rollback se falhar
+      void fetcher();
     }
-  }, [fetchData]);
+  }, [fetcher]);
 
-  return { data, loading, reopen, refresh: fetchData };
+  return { data, loading, reopen, refresh: fetcher };
 }
 
-export function useTrashTasks() {
+/**
+ * HOOK: Tarefas na Lixeira
+ * - lista /api/tasks/trash
+ * - restaura (POST /{id}/restore)
+ * - exclui definitivamente (DELETE /{id})
+ * - calcula contador regressivo de 30 dias até exclusão
+ */
+export function useTrashTasks(query?: string, periodDays?: number) {
   const [data, setData] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [countdowns, setCountdowns] = useState<Record<string, number>>({});
 
-  const fetchData = useCallback(async () => {
+  /** 🔄 Buscar tarefas da lixeira */
+  const fetcher = useCallback(async () => {
     setLoading(true);
     try {
-      const items = await listTrash();
-      setData(items.filter((task) => !isExpired(task.deletedAt)));
+      const items = await listTrash(query, periodDays);
+      // Filtra só os deletados válidos
+      const filtered = items.filter((t) => t.status === 'DELETED' && !!t.deletedAt);
+      setData(filtered);
+
+      // Calcula tempo restante (30 dias após deletedAt)
+      const now = Date.now();
+      const newCountdowns: Record<string, number> = {};
+      filtered.forEach((task) => {
+        const deletedAtMs = new Date(task.deletedAt!).getTime();
+        const expireAtMs = deletedAtMs + 30 * 24 * 60 * 60 * 1000; // 30 dias
+        newCountdowns[task.id] = Math.max(0, expireAtMs - now);
+      });
+      setCountdowns(newCountdowns);
     } catch (e) {
-      setData([]);
       console.log('[useTrashTasks] erro:', e);
+      setData([]);
+      setCountdowns({});
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [query, periodDays]);
 
+  /** Atualiza countdown a cada segundo */
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
+    void fetcher();
     const interval = setInterval(() => {
-      setNow(Date.now());
+      setCountdowns((prev) => {
+        const updated: Record<string, number> = {};
+        for (const id in prev) {
+          updated[id] = Math.max(0, prev[id] - 1000);
+        }
+        return updated;
+      });
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetcher]);
 
-  useEffect(() => {
-    if (!data.length) return;
-    const expired = data.filter((task) => isExpired(task.deletedAt, now));
-    if (!expired.length) return;
-
-    setData((prev) => prev.filter((task) => !expired.some((e) => e.id === task.id)));
-    expired.forEach((task) => {
-      void hardDeleteTask(task.id).catch((e) => console.log('[useTrashTasks] auto hardDelete erro:', e));
-    });
-  }, [data, now]);
-
+  /** ♻️ Restaurar tarefa da lixeira → volta a ser ACTIVE */
   const restore = useCallback(async (id: string) => {
-    setData((prev) => prev.filter((t) => t.id !== id));
+    setData((prev) => prev.filter((t) => t.id !== id)); // UI otimista
     try {
-      await reopenTask(id);
+      await restoreTask(id);
     } catch (e) {
       console.log('[useTrashTasks] restore erro:', e);
-      void fetchData();
+      void fetcher(); // rollback se falhar
     }
-  }, [fetchData]);
+  }, [fetcher]);
 
+  /** ❌ Exclusão definitiva */
   const hardDelete = useCallback(async (id: string) => {
     setData((prev) => prev.filter((t) => t.id !== id));
     try {
       await hardDeleteTask(id);
     } catch (e) {
       console.log('[useTrashTasks] hardDelete erro:', e);
-      void fetchData();
+      void fetcher();
     }
-  }, [fetchData]);
+  }, [fetcher]);
 
-  const countdowns = useMemo(() => {
-    return data.reduce<Record<string, number>>((acc, task) => {
-      if (!task.deletedAt) return acc;
-      const expiresAt = new Date(task.deletedAt).getTime() + THIRTY_DAYS_IN_MS;
-      acc[task.id] = Math.max(0, expiresAt - now);
-      return acc;
-    }, {});
-  }, [data, now]);
-
-  return { data, loading, restore, hardDelete, refresh: fetchData, now, countdowns };
+  return { data, loading, restore, hardDelete, refresh: fetcher, countdowns };
 }

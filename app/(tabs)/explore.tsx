@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,12 +9,22 @@ import {
 } from 'react-native';
 import { useCompletedTasks, useTrashTasks } from '../../hooks/useTaskHistory';
 import { Snackbar } from '../../src/api/components/Snackbar'; // você tem esse componente
+import { Task, completeTask, softDeleteTask } from '../../src/api/services/task.service';
 
 type Tab = 'completed' | 'trash';
 
+type LastAction =
+  | { type: 'reopen'; task: Task }
+  | { type: 'restore'; task: Task };
+
 export default function ExploreScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('completed');
-  const [snack, setSnack] = useState<{ visible: boolean; text: string }>({ visible: false, text: '' });
+  const [snack, setSnack] = useState<{ visible: boolean; text: string; canUndo: boolean }>({
+    visible: false,
+    text: '',
+    canUndo: false,
+  });
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
 
   const completed = useCompletedTasks();
   const trash = useTrashTasks();
@@ -22,24 +32,53 @@ export default function ExploreScreen() {
   const data = useMemo(() => (activeTab === 'completed' ? completed.data : trash.data), [activeTab, completed.data, trash.data]);
   const loading = activeTab === 'completed' ? completed.loading : trash.loading;
 
-  const handleReopen = async (id: string) => {
-    await completed.reopen(id);
-    setSnack({ visible: true, text: 'Tarefa reaberta' });
+  const showSnack = useCallback((text: string, action: LastAction | null) => {
+    setSnack({ visible: true, text, canUndo: !!action });
+    setLastAction(action);
+  }, []);
+
+  const dismissSnack = useCallback(() => {
+    setSnack({ visible: false, text: '', canUndo: false });
+    setLastAction(null);
+  }, []);
+
+  const handleReopen = async (task: Task) => {
+    await completed.reopen(task.id);
+    showSnack('Tarefa reaberta', { type: 'reopen', task });
   };
 
-  const handleRestore = async (id: string) => {
-    await trash.restore(id);
-    setSnack({ visible: true, text: 'Tarefa restaurada' });
+  const handleRestore = async (task: Task) => {
+    await trash.restore(task.id);
+    showSnack('Tarefa restaurada', { type: 'restore', task });
   };
 
-  const handleHardDelete = async (id: string) => {
-    await trash.hardDelete(id);
-    setSnack({ visible: true, text: 'Excluída definitivamente' });
+  const handleHardDelete = async (task: Task) => {
+    await trash.hardDelete(task.id);
+    showSnack('Excluída definitivamente', null);
   };
 
-  function undo(): void {
-    throw new Error('Function not implemented.');
-  }
+  const refreshCompleted = completed.refresh;
+  const refreshTrash = trash.refresh;
+
+  const undo = useCallback(async () => {
+    if (!lastAction) return;
+    const action = lastAction;
+    dismissSnack();
+
+    try {
+      if (action.type === 'reopen') {
+        await completeTask(action.task.id);
+        await refreshCompleted();
+      } else if (action.type === 'restore') {
+        await softDeleteTask(action.task.id);
+        await refreshTrash();
+      }
+      showSnack('Ação desfeita', null);
+    } catch (error) {
+      console.log('[ExploreScreen] undo erro:', error);
+      showSnack('Não foi possível desfazer.', null);
+    }
+  }, [dismissSnack, lastAction, refreshCompleted, refreshTrash, showSnack]);
 
   return (
     <View style={S.container}>
@@ -65,6 +104,7 @@ export default function ExploreScreen() {
             pressed && S.pressablePressed,
           ]}
         >
+
           <Text style={S.tabTxt}>Lixeira</Text>
         </Pressable>
       </View>
@@ -96,7 +136,9 @@ export default function ExploreScreen() {
               <View style={S.actions}>
                 {activeTab === 'completed' ? (
                   <Pressable
-                    onPress={() => handleReopen(item.id)}
+                    onPress={() => {
+                      void handleReopen(item);
+                    }}
                     style={({ pressed }) => [
                       S.btn,
                       S.btnPrimary,
@@ -108,7 +150,9 @@ export default function ExploreScreen() {
                 ) : (
                   <>
                     <Pressable
-                      onPress={() => handleRestore(item.id)}
+                      onPress={() => {
+                        void handleRestore(item);
+                      }}
                       style={({ pressed }) => [
                         S.btn,
                         S.btnNeutral,
@@ -118,7 +162,9 @@ export default function ExploreScreen() {
                       <Text style={S.btnTxt}>Restaurar</Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => handleHardDelete(item.id)}
+                      onPress={() => {
+                        void handleHardDelete(item);
+                      }}
                       style={({ pressed }) => [
                         S.btn,
                         S.btnDanger,
@@ -140,14 +186,9 @@ export default function ExploreScreen() {
         <Snackbar
           visible={snack.visible}
           text={snack.text}
-          actionLabel="Desfazer"
-          onActionPress={undo}
-          onDismiss={() =>
-            setSnack({
-              visible: false,
-              text: '',
-            })
-         }
+          actionLabel={snack.canUndo ? 'Desfazer' : undefined}
+          onActionPress={snack.canUndo ? () => { void undo(); } : undefined}
+          onDismiss={dismissSnack}
         />
 
       )}
