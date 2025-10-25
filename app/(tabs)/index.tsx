@@ -8,7 +8,8 @@ import {
   type Task,
 } from '@/src/api/services/task.service';
 import { theme } from '@/src/api/styles/theme';
-import { useRouter } from 'expo-router';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -25,10 +26,13 @@ import {
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
+type RootTabParamList = {
+  index: undefined;
+  explore: undefined;
+};
 
 export default function HomeScreen() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -61,7 +65,30 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
+
   useEffect(() => { load(true); }, [load]);
+
+  const hasFocusedOnce = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedOnce.current) {
+        void load(false);
+      } else {
+        hasFocusedOnce.current = true;
+      }
+    }, [load])
+  );
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener?.('tabPress', () => {
+      void load(false);
+    });
+
+    return unsubscribe;
+  }, [navigation, load]);
+
 
   useEffect(() => {
     if (selectionMode) {

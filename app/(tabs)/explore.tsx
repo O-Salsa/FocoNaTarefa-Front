@@ -1,3 +1,4 @@
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -28,6 +29,20 @@ export default function ExploreScreen() {
 
   const completed = useCompletedTasks();
   const trash = useTrashTasks();
+  
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab === 'completed') {
+        completed.refresh();
+      } else {
+        trash.refresh();
+      }
+      return () => {};
+    }, [activeTab, completed.refresh, trash.refresh])
+  );
+
+  const refreshCompleted = completed.refresh;
+  const refreshTrash = trash.refresh;
 
   const data = useMemo(() => (activeTab === 'completed' ? completed.data : trash.data), [activeTab, completed.data, trash.data]);
   const loading = activeTab === 'completed' ? completed.loading : trash.loading;
@@ -44,21 +59,30 @@ export default function ExploreScreen() {
 
   const handleReopen = async (task: Task) => {
     await completed.reopen(task.id);
+    await refreshCompleted();
     showSnack('Tarefa reaberta', { type: 'reopen', task });
   };
 
   const handleRestore = async (task: Task) => {
     await trash.restore(task.id);
+    await refreshTrash();
     showSnack('Tarefa restaurada', { type: 'restore', task });
   };
 
   const handleHardDelete = async (task: Task) => {
     await trash.hardDelete(task.id);
+    await refreshTrash();
     showSnack('Excluída definitivamente', null);
   };
 
-  const refreshCompleted = completed.refresh;
-  const refreshTrash = trash.refresh;
+  const handleTabPress = useCallback((tab: Tab) => {
+    setActiveTab(tab);
+    if (tab === 'completed') {
+      void refreshCompleted();
+    } else {
+      void refreshTrash();
+    }
+  }, [refreshCompleted, refreshTrash]);
 
   const undo = useCallback(async () => {
     if (!lastAction) return;
@@ -87,7 +111,7 @@ export default function ExploreScreen() {
       {/* Abas */}
       <View style={S.tabs}>
         <Pressable
-          onPress={() => setActiveTab('completed')}
+          onPress={() => handleTabPress('completed')}
           style={({ pressed }) => [
             S.tabBtn,
             activeTab === 'completed' && S.tabBtnActive,
@@ -97,7 +121,7 @@ export default function ExploreScreen() {
           <Text style={S.tabTxt}>Concluídas</Text>
         </Pressable>
         <Pressable
-          onPress={() => setActiveTab('trash')}
+          onPress={() => handleTabPress('trash')}
           style={({ pressed }) => [
             S.tabBtn,
             activeTab === 'trash' && S.tabBtnActive,
