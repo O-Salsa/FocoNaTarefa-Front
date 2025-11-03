@@ -1,11 +1,22 @@
 // app/profile.tsx
 import { theme } from "@/src/api/styles/theme"; // usa seu tema existente
 import { useRouter } from "expo-router";
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import * as SecureStore from "expo-secure-store";
+import React, { useCallback } from "react";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 export default function Profile() {
   const router = useRouter();
+
+   const handleLogout = useCallback(async () => {
+    try {
+      await SecureStore.deleteItemAsync("accessToken");
+      router.replace("/login");
+    } catch (error) {
+      console.log("[Profile] erro ao fazer logoff", error);
+      Alert.alert("Ops", "Não foi possível sair da conta. Tente novamente.");
+    }
+  }, [router]);
 
   return (
     <View style={S.container}>
@@ -26,6 +37,9 @@ export default function Profile() {
         </View>
         <Text style={S.title}>Seu perfil</Text>
         <Text style={S.sub}>Em breve: alterar foto, nome e opções de conta.</Text>
+        <TouchableOpacity style={S.logoutBtn} onPress={handleLogout}>
+        <Text style={S.logoutTxt}>Sair da conta</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -79,4 +93,16 @@ const S = StyleSheet.create({
   avatarTxt: { fontSize: 34, color: theme.colors.accentDark, fontWeight: "800" },
   title: { marginTop: 16, fontSize: 22, fontWeight: "700", color: theme.colors.textPrimary },
   sub: { marginTop: 6, color: theme.colors.textSecondary, textAlign: "center" },
+  logoutBtn: {
+      marginTop: 24,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: 24,
+      backgroundColor: theme.colors.accent,
+    },
+    logoutTxt: {
+      color: theme.colors.background,
+      fontWeight: "700",
+      fontSize: 16,
+    },
 });
